@@ -21,7 +21,13 @@ Two jobs, kept separate:
 - **DTLS-SRTP** transport underneath (WebRTC's own encryption).
 - **Ephemeral** — nothing is stored; **Panic wipe** zeroizes keys and reloads.
 
-Open the page and hit **Run self-test** to watch the whole crypto path verify itself in front of you.
+## The fourth pillar — behavioral entropy
+
+Identity, authorization and audit all still pass the moment a key is stolen. Fallroom adds a fourth check: **"are you behaving like yourself?"** It measures each person's keystroke-timing and message-cadence entropy, builds their baseline online (no training), and **flags** a message whose rhythm diverges from theirs — even when the Ed25519 signature, room key and proof-of-work seal are all valid. It also catches a scripted bot (too-regular timing) and a pasted/replayed message. It flags to the humans; it never blocks a cryptographically valid message.
+
+This implements **Behavioral Entropy Signatures** from *"GEP-Based Security: Behavioral Entropy Signatures for Cybersecurity and DevOps"* — **Gary W. Floyd, Lumiea Systems Research Division · ThunderStruck Service LLC**. Fallroom measures only the behavioural domain a browser can see (keystroke + cadence), not the network or authorization domains in the paper; the signature is bound into each message's own signature so no relay can forge it.
+
+Open the page and hit **Run self-test** to watch the whole crypto + BES path verify itself in front of you.
 
 ## Use it
 

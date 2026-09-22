@@ -72,6 +72,11 @@
   .badge.gold{color:var(--gold); border-color:var(--gold-dim); background:rgba(232,195,122,.08)}
   .badge.warn{color:var(--warn); border-color:#5f5023; background:rgba(255,207,92,.08)}
   .badge.off{color:var(--faint)}
+  .badge.bad{color:var(--danger); border-color:#5a2730; background:rgba(255,95,109,.1)}
+  .besflag{font:700 9px/1 var(--mono); letter-spacing:.06em; text-transform:uppercase; padding:2px 5px; border-radius:4px; margin-left:2px}
+  .besflag.warn{color:var(--warn); border:1px solid #5f5023; background:rgba(255,207,92,.1)}
+  .besflag.bad{color:var(--danger); border:1px solid #5a2730; background:rgba(255,95,109,.12)}
+  .besok{color:var(--gold); margin-left:2px}
 
   label.fld{display:block; margin:0 0 12px}
   label.fld:last-child{margin-bottom:0}
@@ -275,7 +280,9 @@
             <div class="layer gold" id="lySeal"><span class="li"></span><div><div class="lt">WASM proof-of-work seal</div><div class="ls">anti-spam toll</div></div></div>
             <div class="layer on" id="lyNoServer"><span class="li"></span><div><div class="lt">No backend · no relay</div><div class="ls">STUN lookup · no relay</div></div></div>
             <div class="layer on" id="lyEph"><span class="li"></span><div><div class="lt">Ephemeral</div><div class="ls">nothing stored</div></div></div>
+            <div class="layer gold" id="lyBes" style="grid-column:1/-1"><span class="li"></span><div><div class="lt">Behavioral entropy · the 4th pillar</div><div class="ls">are you behaving like yourself? — flags a valid-but-not-you message</div></div></div>
           </div>
+          <p class="hint">The 4th pillar implements <b>Behavioral Entropy Signatures</b> — Gary W. Floyd, Lumiea Systems Research Division · ThunderStruck Service LLC. Fallroom measures the behavioural domain only (keystroke &amp; message cadence), builds each person's baseline online, and <b>flags</b> a rhythm that diverges from theirs — it never blocks a cryptographically valid message.</p>
           <div class="selftest" id="stOut"></div>
         </div>
       </section>
@@ -427,17 +434,18 @@ async function decryptMsg(ivB64, ctB64){
   return dec.decode(pt);
 }
 
-/* signed, sealed, encrypted envelope */
-async function seal_envelope(kind, text){
+/* signed, sealed, encrypted envelope (the behavioral signature is signature-bound too) */
+async function seal_envelope(kind, text, bes){
   const { iv, ct } = await encryptMsg(text);
   const id = rid(), ts = Date.now();
-  const bound = enc.encode([id,ts,ID.fp,iv,ct].join('|'));
+  const besStr = JSON.stringify(bes||null);
+  const bound = enc.encode([id,ts,ID.fp,iv,ct,besStr].join('|'));
   const sig = await idSign(bound);
   return { v:1, kind, id, ts, handle:$('#handle').value.trim()||'anon', fp:ID.fp,
-           alg:ID.alg, pub:b64(ID.pubRaw), seal:String(ROOM.seal), iv, ct, sig:b64(sig) };
+           alg:ID.alg, pub:b64(ID.pubRaw), seal:String(ROOM.seal), iv, ct, bes:bes||null, sig:b64(sig) };
 }
 async function open_envelope(m){
-  // returns {ok, text, verified, reason}
+  // returns {ok, text, verified, reason, bes}
   try{
     const pubRaw = unb64(m.pub);
     const pubFp = hex(await sha256(pubRaw)).slice(0,16);
@@ -445,13 +453,76 @@ async function open_envelope(m){
     const seed = sealSeed(ROOM.seedBase, await sha256(pubRaw));
     if(!powVerify(seed, BigInt(m.seal))) return {ok:false, reason:'invalid proof-of-work seal'};
     const pubKey = await importPub(pubRaw, m.alg);
-    const bound = enc.encode([m.id,m.ts,m.fp,m.iv,m.ct].join('|'));
+    const bound = enc.encode([m.id,m.ts,m.fp,m.iv,m.ct,JSON.stringify(m.bes||null)].join('|'));
     const verified = await idVerify(pubKey, m.alg, unb64(m.sig), bound);
     if(!verified) return {ok:false, reason:'signature failed'};
     const text = await decryptMsg(m.iv, m.ct);   // throws if wrong key / tampered
-    return {ok:true, text, verified:true, pubFp};
+    return {ok:true, text, verified:true, pubFp, bes:m.bes||null};
   }catch(e){ return {ok:false, reason:'decrypt failed (wrong key or tampered)'}; }
 }
+
+/* ===== 4b · Behavioral Entropy Signatures — Gary W. Floyd's GEP fourth pillar ===== */
+/* Adapts "GEP-Based Security: Behavioral Entropy Signatures for Cybersecurity and DevOps"
+   — Gary W. Floyd, Lumiea Systems Research Division · ThunderStruck Service LLC — to an
+   in-room check. Beyond identity (Ed25519), authorization (room key) and audit (signature),
+   it asks the 4th question: "are you behaving like yourself?" A browser can only see the
+   BEHAVIOURAL domain (H_beh) — keystroke timing + message cadence — not the paper's network
+   or authorization domains. Raw keystrokes never leave the device; only a coarse, signature-
+   bound entropy summary does. k / ε / thresholds are tuned here, not from the paper. This
+   FLAGS divergence to the humans; it never drops a cryptographically valid message. */
+const KEYS = { t:[], corr:0, chars:0, _last:null };
+function besKeydown(e){
+  const now = performance.now();
+  if(e.key==='Backspace'||e.key==='Delete'){ KEYS.corr++; return; }
+  if(e.key && e.key.length===1){
+    if(KEYS._last!=null){ const d=now-KEYS._last; if(d>=0 && d<4000) KEYS.t.push(d); }
+    KEYS._last=now; KEYS.chars++;
+  }
+}
+function besReset(){ KEYS.t=[]; KEYS.corr=0; KEYS.chars=0; KEYS._last=null; }
+const BES_EDGES=[50,100,200,400,800];                 // ms -> 6 buckets
+function besHist(t){ const h=[0,0,0,0,0,0];
+  for(const d of t){ let i=0; while(i<BES_EDGES.length && d>=BES_EDGES[i]) i++; h[i]++; }
+  const n=t.length||1; return h.map(x=>x/n); }
+function shannon(p){ let H=0; for(const x of p) if(x>0) H-=x*Math.log(x); return H; }   // nats
+function besSign(textLen){
+  const t=KEYS.t.slice(); const p=besHist(t);
+  const paste=(textLen>=12 && KEYS.chars<=Math.ceil(textLen*0.35))?1:0;
+  const s=t.slice().sort((a,b)=>a-b); const mps=s.length?Math.round(s[s.length>>1]):0;
+  return { h:Math.round(shannon(p)*1000), hist:p.map(x=>Math.round(x*1000)), n:KEYS.chars, corr:KEYS.corr, paste, mps };
+}
+// Jensen-Shannon divergence of two per-mille histograms -> similarity in [0,1]
+function besSimilarity(aH,bH){
+  const a=aH.map(x=>x/1000), b=bH.map(x=>x/1000), m=a.map((x,i)=>(x+b[i])/2);
+  const kl=(p,q)=>{ let s=0; for(let i=0;i<p.length;i++) if(p[i]>0&&q[i]>0) s+=p[i]*Math.log(p[i]/q[i]); return s; };
+  return Math.max(0, 1-(0.5*kl(a,m)+0.5*kl(b,m))/Math.LN2);
+}
+const BASE = new Map();                 // fp -> { hist:[6], h(milli-nats), count, lastH }
+const GEP = { k:6, eps:150, warm:4 };   // eps in milli-nats
+function gepDecide(fp, sig){
+  if(sig.paste) return { verdict:'anomaly', reason:'pasted, not typed', A:0, E:100, dS:0 };
+  if(sig.n < 8) return { verdict:'weak', reason:'too short to score', A:100, E:0, dS:0 };
+  let base=BASE.get(fp);
+  if(!base){ BASE.set(fp,{ hist:sig.hist.slice(), h:sig.h, count:1, lastH:sig.h });
+    return { verdict:'warming', reason:'building baseline', A:100, E:0, dS:0 }; }
+  const A = besSimilarity(sig.hist, base.hist);
+  const E = 1/(1+Math.exp(-GEP.k*(Math.abs(sig.h-base.h)/1000 - GEP.eps/1000)));
+  const dS = Math.abs(sig.h-base.lastH)/1000;
+  let verdict, reason;
+  if(base.count < GEP.warm){ verdict='warming'; reason='building baseline'; }
+  else if(E<0.3 && A>0.7){ verdict='self'; reason='behaving like themselves'; }
+  else if(dS>0.8){ verdict='stepup'; reason='rapid rhythm change'; }
+  else if(E<0.6 && A>0.5){ verdict='deviation'; reason='minor deviation'; }
+  else { verdict='anomaly'; reason='entropy signature diverges'; }
+  if(verdict==='self'||verdict==='warming'){        // never let a hostile message teach the baseline
+    const a=0.25; base.hist=base.hist.map((x,i)=>Math.round(x*(1-a)+sig.hist[i]*a));
+    base.h=Math.round(base.h*(1-a)+sig.h*a); base.count++;
+  }
+  base.lastH=sig.h;
+  return { verdict, reason, A:Math.round(A*100), E:Math.round(E*100), dS:Math.round(dS*1000) };
+}
+const BES_STYLE={ self:['self ✓','on'], warming:['warming','off'], weak:['ok','off'],
+  deviation:['deviation','warn'], stepup:['step-up','warn'], anomaly:['⚠ anomaly','bad'] };
 
 /* ============================ 5 · WebRTC peers + relay mesh ============================ */
 const PEERS = new Map();     // id -> {id, pc, dc, handle, fp, color, connected}
@@ -503,14 +574,21 @@ function onWire(peer, data){
 function broadcast(m){ const s=JSON.stringify(m); SEEN.add(m.id);
   for(const p of PEERS.values()){ if(p.dc && p.dc.readyState==='open'){ try{ p.dc.send(s); }catch(e){} } } }
 
+const ROOMMATES = new Map();   // fp -> { fp, handle, color, bes, ts, self }
+function upsertMate(fp, handle, bes, self){
+  let r=ROOMMATES.get(fp);
+  if(!r){ r={ fp, handle:handle||'anon', color:colorFor(fp), bes:null, ts:0, self:!!self }; ROOMMATES.set(fp,r); }
+  if(handle) r.handle=handle; if(bes) r.bes=bes; if(self) r.self=true; r.ts=Date.now();
+  renderRoster();
+}
 async function deliver(m){
   const res = await open_envelope(m);
-  if(m.kind==='hello'){ // learn identity/handle
-    const p=[...PEERS.values()].find(x=>x.fp===m.fp); if(p){ p.handle=m.handle; p.color=colorFor(m.fp); renderRoster(); }
-    if(res.ok) sysMsg(`${m.handle} verified · seal ✓ signature ✓`); return;
-  }
-  addMsg({ handle:m.handle, fp:m.fp, ts:m.ts,
-    text: res.ok?res.text:('⚠ '+res.reason), me:false, ok:res.ok });
+  if(!res.ok){ addMsg({ handle:m.handle, fp:m.fp, ts:m.ts, text:'⚠ '+res.reason, me:false, ok:false }); return; }
+  if(m.kind==='hello'){ upsertMate(m.fp, m.handle, null); sysMsg(`${m.handle} verified · key ✓ seal ✓`); return; }
+  const bes = res.bes ? gepDecide(m.fp, res.bes) : null;   // Gary W. Floyd's BES: score the sender's rhythm
+  upsertMate(m.fp, m.handle, bes);
+  if(bes && bes.verdict==='anomaly') sysMsg(`⚠ behavioral-entropy anomaly on a message from ${m.handle} — ${bes.reason}. The crypto is valid; confirm it's really them.`);
+  addMsg({ handle:m.handle, fp:m.fp, ts:m.ts, text:res.text, me:false, ok:true, bes });
 }
 
 /* -------- flows -------- */
@@ -598,12 +676,19 @@ function natCheck(){
 
 /* ============================ 6 · chat + roster UI ============================ */
 const stream=$('#stream');
-function addMsg({handle,fp,ts,text,me,ok}){
+function addMsg({handle,fp,ts,text,me,ok,bes}){
   const el=document.createElement('div'); el.className='msg'+(me?' me':'')+(ok===false?' bad':'');
   const t=new Date(ts||Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
   const col=colorFor(fp||ID.fp);
+  let flag='';
+  if(ok!==false && bes){
+    const style=BES_STYLE[bes.verdict];
+    if(bes.verdict==='self') flag=' <span class="besok" title="behaving like themselves (BES)">◊</span>';
+    else if(style && (bes.verdict==='deviation'||bes.verdict==='stepup'||bes.verdict==='anomaly'))
+      flag=` <span class="besflag ${style[1]}" title="${escapeHtml(bes.reason||'')}">${style[0]}</span>`;
+  }
   el.innerHTML=`<div class="meta"><span style="color:${col};font-weight:700">${escapeHtml(handle||'anon')}</span>
-    <span>${t}</span> ${ok===false?'<span class="vx">unverified ✕</span>':'<span class="vtick">✓</span>'}</div>
+    <span>${t}</span> ${ok===false?'<span class="vx">unverified ✕</span>':'<span class="vtick">✓</span>'}${flag}</div>
     <div class="bub">${escapeHtml(text)}</div>`;
   stream.appendChild(el); stream.scrollTop=stream.scrollHeight;
 }
@@ -612,19 +697,21 @@ function sysMsg(t){ const el=document.createElement('div'); el.className='msg sy
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function renderRoster(){
-  const arr=[...PEERS.values()];
-  const conn=arr.filter(p=>p.connected).length;
-  const pc=$('#peerCount'); pc.textContent=conn+' connected'; pc.className='badge '+(conn?'on':'off');
+  const conn=[...PEERS.values()].filter(p=>p.connected).length;
+  const mates=[...ROOMMATES.values()].sort((a,b)=>(b.self?1:0)-(a.self?1:0)||b.ts-a.ts);
+  const pc=$('#peerCount'); pc.textContent=mates.length+' in room · '+conn+' linked'; pc.className='badge '+(conn?'on':'off');
   const r=$('#roster');
-  if(!arr.length){ r.innerHTML='<div class="empty">No peers yet. Arm the room, then connect one from panel 03.</div>'; return; }
+  if(!mates.length){ r.innerHTML='<div class="empty">No one yet. Arm the room, connect a peer from panel 03, and people appear here as they speak.</div>'; return; }
   r.innerHTML='';
-  for(const p of arr){
+  for(const p of mates){
     const col=p.color||'#2ff0c8';
+    const [lab,cls]=(p.bes&&BES_STYLE[p.bes.verdict])||['—','off'];
+    const title=p.bes?`behavioral entropy: ${p.bes.reason}${p.bes.A!=null?` · similarity ${p.bes.A}% · field ${p.bes.E}%`:''}`:'no message scored yet';
     const el=document.createElement('div'); el.className='peer';
     el.innerHTML=`<div class="av" style="background:linear-gradient(150deg,${col},#0e5f52)">${escapeHtml((p.handle||'?')[0]||'?').toUpperCase()}</div>
-      <div style="min-width:0"><div class="pn">${escapeHtml(p.handle||'connecting…')}</div>
-      <div class="pm">${p.fp?('#'+p.fp.slice(0,10)):'handshaking'}</div></div>
-      <div class="pstate">${p.connected?'<span class="badge on">live</span>':'<span class="badge warn">pending</span>'}</div>`;
+      <div style="min-width:0"><div class="pn">${escapeHtml(p.handle||'anon')}${p.self?' <span class="dim" style="font-weight:400;font-size:11px">(you)</span>':''}</div>
+      <div class="pm">#${p.fp.slice(0,10)}</div></div>
+      <div class="pstate"><span class="badge ${cls}" title="${escapeHtml(title)}">${lab}</span></div>`;
     r.appendChild(el);
   }
 }
@@ -632,9 +719,12 @@ function enableChat(){ if([...PEERS.values()].some(p=>p.connected)){ $('#msgIn')
 
 async function sendMessage(){
   const v=$('#msgIn').value.trim(); if(!v) return; if(!ROOM.armed) return toast('Arm the room first');
-  const env=await seal_envelope('msg', v);
+  const sig=besSign(v.length);                 // Gary W. Floyd's BES: my keystroke-rhythm signature
+  const env=await seal_envelope('msg', v, sig);
+  besReset();
   broadcast(env);
-  addMsg({handle:$('#handle').value.trim()||'me', fp:ID.fp, ts:env.ts, text:v, me:true, ok:true});
+  const mine=ROOMMATES.get(ID.fp); if(mine){ mine.ts=Date.now(); renderRoster(); }
+  addMsg({handle:$('#handle').value.trim()||'me', fp:ID.fp, ts:env.ts, text:v, me:true, ok:true, bes:{verdict:'self',reason:'you'}});
   $('#msgIn').value='';
 }
 async function sayHello(){ if(!ROOM.armed) return; const env=await seal_envelope('hello','👋'); broadcast(env); }
@@ -676,6 +766,16 @@ async function selfTest(){
     // relay dedup
     const before=SEEN.size; SEEN.add('dup-x'); onWire({dc:null}, JSON.stringify({id:'dup-x',kind:'sys'}));
     await A(true, 'relay layer de-dupes already-seen messages');
+    // --- Behavioral Entropy Signatures (Gary W. Floyd's GEP 4th pillar) ---
+    const hHum=[80,180,320,240,120,60]; const Hn=a=>shannon(a.map(x=>x/1000));
+    const mkSig=(hist,paste=0,n=20)=>({ h:Math.round(Hn(hist)*1000), hist, n, corr:1, paste, mps:180 });
+    BASE.delete('besfp');
+    for(let i=0;i<5;i++) gepDecide('besfp', mkSig(hHum));
+    await A(true, 'BES baseline warms online, no training corpus (Gary W. Floyd · ThunderStruck Service LLC)');
+    await A(gepDecide('besfp', mkSig(hHum)).verdict==='self', 'BES accepts a message that matches the operator rhythm');
+    await A(['anomaly','deviation','stepup'].includes(gepDecide('besfp', mkSig([0,0,1000,0,0,0])).verdict), 'BES flags scripted-regular timing (attacker too regular)');
+    await A(gepDecide('besfp', mkSig(hHum,1,3)).verdict==='anomaly', 'BES flags a pasted, not typed, message');
+    BASE.delete('besfp');
     await A(NET===0, `no server was contacted during the test (counter = ${NET})`);
   }catch(e){ all=false; log(false,'exception: '+e.message); }
   out.innerHTML+= all?'<span class="pass">\n■ ALL CHECKS PASSED — the crypto path is live.</span>'
@@ -689,6 +789,7 @@ function paintLayers(){
   $('#lyAes').classList.toggle('on', ROOM.armed);
   $('#lySeal').classList.toggle('on', ROOM.armed && ROOM.seal!=null);
   $('#lySig').classList.toggle('on', !!ID.fp);
+  $('#lyBes').classList.toggle('on', ROOM.armed);
 }
 (async function boot(){
   // identity
@@ -719,7 +820,9 @@ function paintLayers(){
     $('#sealOut').innerHTML=`<span class="gold">${DIFF}-bit</span> · nonce ${seal} · ground in ${ms} ms`;
     const rb=$('#roomBadge'); rb.textContent='armed'; rb.className='badge on';
     $('#armBtn').disabled=false; $('#armBtn').textContent='Re-derive room key & seal';
-    paintLayers(); toast('Room armed · key derived · seal ground');
+    paintLayers();
+    upsertMate(ID.fp, $('#handle').value.trim()||'me', {verdict:'self',reason:'you',A:100,E:0}, true);
+    toast('Room armed · key derived · seal ground');
     // greet anyone already connected
     sayHello();
   };
@@ -734,7 +837,7 @@ function paintLayers(){
 
   // chat
   $('#sendBtn').onclick=sendMessage;
-  $('#msgIn').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); sendMessage(); } });
+  $('#msgIn').addEventListener('keydown',e=>{ besKeydown(e); if(e.key==='Enter'){ e.preventDefault(); sendMessage(); } });
   $('#stBtn').onclick=()=>selfTest();
 
   // panic
