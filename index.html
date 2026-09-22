@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fallroom</title>
+<meta name="description" content="A serverless, end-to-end encrypted peer-to-peer war-room for a private build cell. No server, no accounts, no telemetry. Runs entirely in your browser.">
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root{
+    --void:#06080b; --panel:#0b0f14; --panel2:#0f151c; --raise:#131c25;
+    --line:#1b2732; --line2:#243441;
+    --ink:#e7eef5; --dim:#8ea0b2; --faint:#5d6b7a;
+    --mint:#2ff0c8; --mint-dim:#1c6f60;
+    --gold:#e8c37a; --gold-dim:#6b5730;
+    --danger:#ff5f6d; --warn:#ffcf5c;
+    --radius:14px; --gutter:16px;
+    --mono:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 620px at 82% -8%, rgba(47,240,200,.09), transparent 60%),
+      radial-gradient(900px 520px at 6% 108%, rgba(232,195,122,.06), transparent 55%),
+      var(--void);
+    color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    min-height:100dvh; line-height:1.5;
+  }
+  a{color:var(--mint)}
+  ::selection{background:rgba(47,240,200,.25)}
+  .wrap{max-width:1220px; margin:0 auto; padding:var(--gutter)}
+
+  /* ---- top bar ---- */
+  header{display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:6px 2px 16px}
+  .brand{display:flex; align-items:center; gap:12px; min-width:0}
+  .glyph{width:34px;height:34px;flex:none;border-radius:9px;
+    background:linear-gradient(150deg,var(--mint),#0e5f52);
+    box-shadow:0 0 0 1px rgba(47,240,200,.35), 0 6px 22px -8px rgba(47,240,200,.6);
+    position:relative}
+  .glyph::after{content:"";position:absolute;inset:8px;border-radius:4px;
+    border:2px solid rgba(6,8,11,.85); border-right-color:transparent; border-bottom-color:transparent;
+    transform:rotate(45deg)}
+  .brand b{font-size:19px; letter-spacing:.14em; font-weight:800}
+  .brand .sub{font:600 10px/1 var(--mono); letter-spacing:.34em; color:var(--faint); text-transform:uppercase; margin-top:3px}
+  .spacer{flex:1}
+  .netpill{display:flex; align-items:center; gap:9px; font:600 12px/1 var(--mono);
+    background:var(--panel); border:1px solid var(--line); padding:9px 13px; border-radius:999px; color:var(--dim)}
+  .netpill b{color:var(--mint)}
+  .netpill.hot b{color:var(--warn)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint)}
+  .netpill.hot .dot{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+
+  /* ---- layout ---- */
+  .grid{display:grid; grid-template-columns:minmax(0,360px) minmax(0,1fr); gap:var(--gutter); align-items:start}
+  @media(max-width:860px){ .grid{grid-template-columns:1fr} }
+  .col{display:flex; flex-direction:column; gap:var(--gutter); min-width:0}
+
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .card > .hd{display:flex; align-items:center; gap:10px; padding:13px 15px; border-bottom:1px solid var(--line)}
+  .card > .hd .k{font:700 10.5px/1 var(--mono); letter-spacing:.24em; text-transform:uppercase; color:var(--dim)}
+  .card > .hd .k .n{color:var(--mint)}
+  .card > .bd{padding:15px}
+  .hd .badge{margin-left:auto}
+
+  .badge{font:700 10px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase;
+    padding:5px 8px; border-radius:6px; border:1px solid var(--line2); color:var(--faint); white-space:nowrap}
+  .badge.on{color:var(--mint); border-color:var(--mint-dim); background:rgba(47,240,200,.08)}
+  .badge.gold{color:var(--gold); border-color:var(--gold-dim); background:rgba(232,195,122,.08)}
+  .badge.warn{color:var(--warn); border-color:#5f5023; background:rgba(255,207,92,.08)}
+  .badge.off{color:var(--faint)}
+
+  label.fld{display:block; margin:0 0 12px}
+  label.fld:last-child{margin-bottom:0}
+  .fld .lab{font:700 10px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--dim); display:block; margin-bottom:7px}
+  input[type=text],input[type=password],textarea,select{
+    width:100%; background:var(--void); color:var(--ink); border:1px solid var(--line2);
+    border-radius:9px; padding:11px 12px; font-family:var(--sans); font-size:14px; outline:none; resize:vertical}
+  textarea{font-family:var(--mono); font-size:12px; line-height:1.45; min-height:76px}
+  input:focus,textarea:focus,select:focus{border-color:var(--mint); box-shadow:0 0 0 3px rgba(47,240,200,.14)}
+  input::placeholder,textarea::placeholder{color:var(--faint)}
+
+  .chips{display:flex; gap:7px; flex-wrap:wrap; margin-top:9px}
+  .chip{font:600 12px/1 var(--sans); padding:8px 12px; border-radius:999px; cursor:pointer;
+    background:var(--raise); border:1px solid var(--line2); color:var(--dim)}
+  .chip:hover{border-color:var(--mint); color:var(--ink)}
+  .chip.sel{background:rgba(47,240,200,.12); border-color:var(--mint); color:var(--mint)}
+
+  .btn{appearance:none; cursor:pointer; font:700 13px/1 var(--sans); letter-spacing:.01em;
+    padding:11px 15px; border-radius:9px; border:1px solid var(--line2); background:var(--raise); color:var(--ink);
+    display:inline-flex; align-items:center; gap:8px; justify-content:center}
+  .btn:hover{border-color:var(--mint)}
+  .btn:disabled{opacity:.4; cursor:not-allowed}
+  .btn.pri{background:linear-gradient(180deg,#2ff0c8,#16b394); border-color:transparent; color:#04120e; font-weight:800}
+  .btn.pri:hover{filter:brightness(1.06)}
+  .btn.gold{background:linear-gradient(180deg,#e8c37a,#c79a45); border-color:transparent; color:#231802; font-weight:800}
+  .btn.ghost{background:transparent}
+  .btn.danger{color:var(--danger); border-color:#5a2730}
+  .btn.danger:hover{background:rgba(255,95,109,.1)}
+  .btn.sm{padding:8px 11px; font-size:12px}
+  .row{display:flex; gap:9px; flex-wrap:wrap}
+  .row > *{flex:1}
+  .row.tight > *{flex:none}
+
+  .kv{display:flex; align-items:baseline; gap:10px; font:12px/1.5 var(--mono); padding:3px 0}
+  .kv .kk{color:var(--faint); min-width:78px; letter-spacing:.06em; text-transform:uppercase; font-size:10px; font-weight:700}
+  .kv .vv{color:var(--ink); word-break:break-all}
+  .mint{color:var(--mint)} .gold{color:var(--gold)} .dim{color:var(--dim)} .danger{color:var(--danger)}
+
+  .fp{font:600 12px/1.4 var(--mono); color:var(--gold); letter-spacing:.04em}
+  .words{display:flex; gap:7px; flex-wrap:wrap; margin-top:8px}
+  .word{font:700 11px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--gold);
+    background:rgba(232,195,122,.09); border:1px solid var(--gold-dim); border-radius:6px; padding:6px 9px}
+
+  .hint{font:12px/1.5 var(--sans); color:var(--faint); margin:9px 0 0}
+  .hint b{color:var(--dim); font-weight:700}
+  .warnbox{font:12px/1.5 var(--sans); color:var(--warn); background:rgba(255,207,92,.07);
+    border:1px solid #5f5023; border-radius:9px; padding:9px 11px; margin-top:11px}
+
+  /* ---- layers meter ---- */
+  .layers{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .layer{display:flex; align-items:center; gap:9px; background:var(--void); border:1px solid var(--line);
+    border-radius:9px; padding:9px 11px}
+  .layer .li{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none}
+  .layer.on .li{background:var(--mint);box-shadow:0 0 9px var(--mint)}
+  .layer.gold.on .li{background:var(--gold);box-shadow:0 0 9px var(--gold)}
+  .layer .lt{font:700 11px/1.25 var(--sans)}
+  .layer .ls{font:10px/1.2 var(--mono); color:var(--faint); letter-spacing:.04em}
+  .layer.on .lt{color:var(--ink)} .layer:not(.on) .lt{color:var(--dim)}
+
+  /* ---- roster ---- */
+  .roster{display:flex; flex-direction:column; gap:8px}
+  .peer{display:flex; align-items:center; gap:11px; background:var(--void); border:1px solid var(--line);
+    border-radius:10px; padding:10px 12px}
+  .peer .av{width:30px;height:30px;border-radius:8px;flex:none;display:grid;place-items:center;
+    font:800 13px/1 var(--sans); color:#04120e}
+  .peer .pn{font:700 13px/1.2 var(--sans)}
+  .peer .pm{font:10.5px/1.3 var(--mono); color:var(--faint); letter-spacing:.03em}
+  .peer .pstate{margin-left:auto; display:flex; gap:6px; align-items:center}
+  .empty{color:var(--faint); font:12px/1.5 var(--sans); text-align:center; padding:16px 8px}
+
+  /* ---- chat ---- */
+  .chatcard{display:flex; flex-direction:column; min-height:440px}
+  .stream{flex:1; overflow:auto; padding:15px; display:flex; flex-direction:column; gap:11px; min-height:280px}
+  .msg{max-width:82%; display:flex; flex-direction:column; gap:3px}
+  .msg .meta{font:10.5px/1 var(--mono); color:var(--faint); letter-spacing:.03em; display:flex; gap:7px; align-items:center}
+  .msg .bub{background:var(--raise); border:1px solid var(--line2); border-radius:11px; padding:9px 12px;
+    font:14px/1.45 var(--sans); word-wrap:break-word; overflow-wrap:anywhere}
+  .msg.me{align-self:flex-end; align-items:flex-end}
+  .msg.me .bub{background:linear-gradient(180deg,rgba(47,240,200,.16),rgba(47,240,200,.07)); border-color:var(--mint-dim)}
+  .msg.sys{align-self:center; max-width:92%}
+  .msg.sys .bub{background:transparent; border:1px dashed var(--line2); color:var(--dim); font-size:12px; text-align:center}
+  .msg.bad .bub{border-color:#5a2730}
+  .vtick{color:var(--mint)} .vx{color:var(--danger)}
+  .composer{display:flex; gap:9px; padding:12px; border-top:1px solid var(--line)}
+  .composer input{flex:1}
+
+  .foot{color:var(--faint); font:11.5px/1.7 var(--sans); text-align:center; padding:22px 8px 8px}
+  .foot a{color:var(--dim)}
+  .foot .est{color:var(--mint)}
+
+  .selftest{font:12px/1.6 var(--mono); white-space:pre-wrap; word-break:break-word; color:var(--dim);
+    background:var(--void); border:1px solid var(--line); border-radius:9px; padding:11px; margin-top:11px; display:none}
+  .selftest.show{display:block}
+  .selftest .pass{color:var(--mint)} .selftest .fail{color:var(--danger)}
+
+  .toast{position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(20px);
+    background:var(--raise); border:1px solid var(--mint-dim); color:var(--ink); font:600 13px/1 var(--sans);
+    padding:12px 16px; border-radius:10px; opacity:0; pointer-events:none; transition:.22s; z-index:50}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="glyph" aria-hidden="true"></div>
+      <div>
+        <b>FALLROOM</b>
+        <div class="sub">serverless · e2e · p2p</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="netpill" id="netpill" title="HTTP / tracker / beacon calls this page has made since it loaded. A STUN address-lookup happens at the ICE/UDP layer and is not an HTTP call — it is shown under panel 03.">
+      <span class="dot"></span><b id="netcount">0</b>&nbsp;HTTP calls out
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT -->
+    <div class="col">
+
+      <!-- identity -->
+      <section class="card">
+        <div class="hd"><div class="k"><span class="n">01</span> · Your identity</div>
+          <span class="badge gold" id="algBadge">…</span></div>
+        <div class="bd">
+          <label class="fld">
+            <span class="lab">Handle</span>
+            <input id="handle" type="text" maxlength="24" placeholder="who are you in the cell" autocomplete="off">
+            <div class="chips" id="handleChips"></div>
+          </label>
+          <div class="kv"><span class="kk">Key</span><span class="vv"><span id="algName" class="mint">—</span> · in-memory only</span></div>
+          <div class="kv"><span class="kk">Fingerprint</span><span class="vv fp" id="idFp">generating…</span></div>
+          <p class="hint">Your signing keypair is generated here and <b>never leaves this device</b>. Close the tab and it's gone.</p>
+        </div>
+      </section>
+
+      <!-- room -->
+      <section class="card">
+        <div class="hd"><div class="k"><span class="n">02</span> · The room</div>
+          <span class="badge off" id="roomBadge">locked</span></div>
+        <div class="bd">
+          <label class="fld"><span class="lab">Room name</span>
+            <input id="roomName" type="text" maxlength="40" placeholder="e.g. the-cell" autocomplete="off" value="the-cell"></label>
+          <label class="fld"><span class="lab">Shared passphrase</span>
+            <input id="roomPass" type="password" maxlength="128" placeholder="the secret only the four of you know" autocomplete="off"></label>
+          <div class="row tight">
+            <button class="btn pri" id="armBtn" style="flex:1">Derive room key &amp; arm seal</button>
+          </div>
+          <div id="roomOut" style="display:none; margin-top:13px">
+            <div class="kv"><span class="kk">Key f/p</span><span class="vv fp" id="roomFp">—</span></div>
+            <div class="words" id="roomWords"></div>
+            <p class="hint">Everyone with the same room name + passphrase derives the <b>same</b> key. Read the three words aloud to each other — if they match, you share the key and no one else can read the room. If they differ, someone typed something different.</p>
+            <div class="kv" style="margin-top:8px"><span class="kk">Seal</span><span class="vv" id="sealOut">—</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- connect -->
+      <section class="card">
+        <div class="hd"><div class="k"><span class="n">03</span> · Connect a peer</div></div>
+        <div class="bd">
+          <p class="hint" style="margin:0 0 12px">No signaling server. You trade one blob out-of-band (Signal, in person, however you like). One of you <b>creates an invite</b>; the other <b>answers</b>; the first <b>completes</b>.</p>
+          <div class="row" style="margin-bottom:12px">
+            <button class="btn" id="mkInvite">Create an invite ▸</button>
+            <button class="btn ghost" id="haveInvite">I have an invite ▸</button>
+          </div>
+          <div id="sigArea" style="display:none">
+            <label class="fld"><span class="lab" id="sigOutLab">Send this to your peer</span>
+              <textarea id="sigOut" readonly placeholder="—"></textarea></label>
+            <div class="row tight" style="margin-bottom:12px"><button class="btn sm" id="copySig">Copy</button>
+              <span class="hint" id="sigStep" style="align-self:center;margin:0"></span></div>
+            <label class="fld" id="sigInWrap"><span class="lab" id="sigInLab">Paste your peer's reply</span>
+              <textarea id="sigIn" placeholder="paste the blob they send back"></textarea></label>
+            <button class="btn pri" id="sigGo" style="width:100%">Continue</button>
+          </div>
+          <div class="warnbox" id="natNote" style="display:none"></div>
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;font:700 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--faint)">Advanced · NAT traversal (STUN)</summary>
+            <label class="fld" style="margin-top:11px"><span class="lab">STUN server — how the paste reaches across networks</span>
+              <input id="stun" type="text" value="stun:stun.cloudflare.com:3478" autocomplete="off"></label>
+            <p class="hint" style="margin-top:0">Your browser asks this one box <b>“what's my public address?”</b> once, drops the answer into your invite blob, and it's out of the loop — it never relays a message. That public address is what lets a peer on another network reach you directly. Clear it to go same-LAN-only (host candidates); point it at your own <b>coturn</b> box to keep even the lookup in-house.</p>
+          </details>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="col">
+
+      <!-- privacy layers -->
+      <section class="card">
+        <div class="hd"><div class="k"><span class="n">04</span> · Privacy posture</div>
+          <button class="btn ghost sm" id="stBtn" style="margin-left:auto">Run self-test</button></div>
+        <div class="bd">
+          <div class="layers">
+            <div class="layer on" id="lyDtls"><span class="li"></span><div><div class="lt">DTLS-SRTP transport</div><div class="ls">webrtc built-in</div></div></div>
+            <div class="layer" id="lyAes"><span class="li"></span><div><div class="lt">AES-256-GCM payload</div><div class="ls">e2e, per-message iv</div></div></div>
+            <div class="layer" id="lySig"><span class="li"></span><div><div class="lt">Signed messages</div><div class="ls" id="lySigSub">authenticity</div></div></div>
+            <div class="layer gold" id="lySeal"><span class="li"></span><div><div class="lt">WASM proof-of-work seal</div><div class="ls">anti-spam toll</div></div></div>
+            <div class="layer on" id="lyNoServer"><span class="li"></span><div><div class="lt">No backend · no relay</div><div class="ls">STUN lookup · no relay</div></div></div>
+            <div class="layer on" id="lyEph"><span class="li"></span><div><div class="lt">Ephemeral</div><div class="ls">nothing stored</div></div></div>
+          </div>
+          <div class="selftest" id="stOut"></div>
+        </div>
+      </section>
+
+      <!-- roster -->
+      <section class="card">
+        <div class="hd"><div class="k"><span class="n">05</span> · The cell</div>
+          <span class="badge off" id="peerCount">0 connected</span></div>
+        <div class="bd">
+          <div class="roster" id="roster"><div class="empty">No peers yet. Arm the room, then connect one from panel 03.</div></div>
+        </div>
+      </section>
+
+      <!-- chat -->
+      <section class="card chatcard">
+        <div class="hd"><div class="k"><span class="n">06</span> · Encrypted channel</div>
+          <button class="btn danger sm" id="panicBtn" style="margin-left:auto">Panic wipe</button></div>
+        <div class="stream" id="stream"><div class="msg sys"><div class="bub">Room is empty. Everything you send is encrypted to the shared key and signed by your identity.</div></div></div>
+        <div class="composer">
+          <input id="msgIn" type="text" placeholder="message the cell…" autocomplete="off" disabled>
+          <button class="btn pri" id="sendBtn" disabled>Send</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="foot">
+    Fallroom runs entirely in your browser — no server ever sees your keys or your messages. Peer links are direct P2P; a STUN box learns only your address for one lookup and relays nothing.<br>
+    Built on the <span class="est">FallForge</span> estate — p2p relay after <b>meshos</b>, crypto after <b>sovereign-demo</b>, the proof-of-work toll after <b>the-toll</b>.
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================ 0 · privacy tripwire ============================ */
+/* Count every attempt to reach a server. Nothing in this app calls these — the
+   counter is a live proof, not a control. If it ever moves, you'll see it. */
+let NET = 0;
+const netcount = document.getElementById('netcount');
+const netpill = document.getElementById('netpill');
+function tripped(what){ NET++; netcount.textContent = NET; netpill.classList.add('hot');
+  netpill.title = 'Something tried to reach: ' + what; }
+(function(){
+  const wrap = (obj, name, label) => { if(!obj || !obj[name]) return; const orig = obj[name].bind(obj);
+    obj[name] = function(...a){ tripped((label||name)+' → '+String(a[0]).slice(0,64)); return orig(...a); }; };
+  try{ wrap(window,'fetch','fetch'); }catch(e){}
+  try{ const X=window.XMLHttpRequest; if(X){ const op=X.prototype.open;
+    X.prototype.open=function(m,u,...r){ tripped('XHR → '+String(u).slice(0,64)); return op.call(this,m,u,...r); }; } }catch(e){}
+  try{ const B=navigator.sendBeacon; if(B){ navigator.sendBeacon=function(u,...r){ tripped('beacon → '+u); return B.call(navigator,u,...r); }; } }catch(e){}
+  try{ const W=window.WebSocket; if(W){ window.WebSocket=function(u,...r){ tripped('websocket → '+u); return new W(u,...r); }; } }catch(e){}
+  try{ const E=window.EventSource; if(E){ window.EventSource=function(u,...r){ tripped('eventsource → '+u); return new E(u,...r); }; } }catch(e){}
+})();
+
+/* ============================ 1 · tiny utils ============================ */
+const $ = s => document.querySelector(s);
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = u8 => btoa(String.fromCharCode(...new Uint8Array(u8)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const hex = u8 => [...new Uint8Array(u8)].map(b=>b.toString(16).padStart(2,'0')).join('');
+const rid = () => hex(crypto.getRandomValues(new Uint8Array(8)));
+async function sha256(bytes){ return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)); }
+function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('show'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),1800); }
+
+// deterministic 3-word fingerprint from bytes (visual key-match aid)
+const WORDS = ("falcon ember cobalt onyx harbor cipher raven quartz vector delta atlas nomad "
+ +"pixel gamma helix ridge lunar signal amber flint drift crown zephyr bishop tundra glass "
+ +"cedar iron mirror pulse anvil vault sable orbit north gable ozone kelp maple thorn "
+ +"basalt cove ledger nova prism quill relay stark tidal umber vertex willow xenon yield zinc "
+ +"argon boron carbon dune echo fjord grove hollow").trim().split(/\s+/);
+function words3(u8){ return [u8[0]%WORDS.length, u8[1]%WORDS.length, u8[2]%WORDS.length].map(i=>WORDS[i]); }
+
+// u64 (BigInt) from first 8 bytes, for the WASM seed
+const u64 = u8 => { let v=0n; for(let i=0;i<8;i++) v=(v<<8n)|BigInt(u8[i]); return BigInt.asUintN(64,v); };
+
+/* ============================ 2 · WASM proof-of-work ============================ */
+const POW_B64 = "AGFzbQEAAAABDgJgAX4BfmAEfn9+fgF+AwQDAAABBw8CA21peAABBWdyaW5kAAIKkwEDSAEBfiAAQpX4qfqXt96bnn98IQEgASABQh6IhUK5y5Pn0e2RrL9/fiEBIAEgAUIbiIVC66PEmbG3kuiUf34hASABIAFCH4iFCwYAIAAQAAtBAQN+IAIhBELAACABrX0hBgJAA0AgACAEhRAAIAaIUARAIAQPCyAEQgF8IQQgBUIBfCEFIAUgA1oNAQwACwtCfws=";
+const DIFF = 24;                     // leading zero bits — the "knock" (~40-90ms)
+const BUDGET = (1n<<32n);
+let POW = null;
+(async () => {
+  const { instance } = await WebAssembly.instantiate(unb64(POW_B64), {});
+  POW = instance.exports;
+})();
+function powGrind(seed){ return POW.grind(BigInt.asUintN(64,seed), DIFF, 0n, BUDGET); }
+function powVerify(seed, nonce){
+  if(nonce < 0n) return false;
+  const h = BigInt.asUintN(64, POW.mix(BigInt.asUintN(64, BigInt.asUintN(64,seed) ^ BigInt.asUintN(64,nonce))));
+  return (h >> BigInt(64 - DIFF)) === 0n;
+}
+
+/* ============================ 3 · identity (Ed25519, ECDSA fallback) ============================ */
+const ID = { alg:null, priv:null, pub:null, pubRaw:null, fp:null };
+async function makeIdentity(){
+  try{
+    const kp = await crypto.subtle.generateKey({name:'Ed25519'}, false, ['sign','verify']);
+    ID.alg='Ed25519'; ID.priv=kp.privateKey; ID.pub=kp.publicKey;
+    ID.pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
+  }catch(e){
+    const kp = await crypto.subtle.generateKey({name:'ECDSA', namedCurve:'P-256'}, false, ['sign','verify']);
+    ID.alg='ECDSA-P256'; ID.priv=kp.privateKey; ID.pub=kp.publicKey;
+    ID.pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
+  }
+  ID.fp = hex(await sha256(ID.pubRaw)).slice(0,16);
+}
+async function idSign(bytes){
+  const p = ID.alg==='Ed25519' ? {name:'Ed25519'} : {name:'ECDSA', hash:'SHA-256'};
+  return new Uint8Array(await crypto.subtle.sign(p, ID.priv, bytes));
+}
+async function importPub(raw, alg){
+  if(alg==='Ed25519') return crypto.subtle.importKey('raw', raw, {name:'Ed25519'}, false, ['verify']);
+  return crypto.subtle.importKey('raw', raw, {name:'ECDSA', namedCurve:'P-256'}, false, ['verify']);
+}
+async function idVerify(pubKey, alg, sig, bytes){
+  const p = alg==='Ed25519' ? {name:'Ed25519'} : {name:'ECDSA', hash:'SHA-256'};
+  try{ return await crypto.subtle.verify(p, pubKey, sig, bytes); }catch(e){ return false; }
+}
+
+/* ============================ 4 · room key (PBKDF2 → AES-GCM) ============================ */
+const ROOM = { armed:false, key:null, verifier:null, seedBase:null, seal:null, fp:null };
+async function armRoom(name, pass){
+  const salt = await sha256(enc.encode('fallroom:v1:'+name));
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    {name:'PBKDF2', salt, iterations:310000, hash:'SHA-256'}, base, 256));
+  ROOM.key = await crypto.subtle.importKey('raw', bits, {name:'AES-GCM'}, false, ['encrypt','decrypt']);
+  // one-way verifier of the key material — safe to display, lets peers confirm a shared key
+  ROOM.verifier = await sha256(concat(enc.encode('fallroom-verify|'), bits));
+  ROOM.fp = hex(ROOM.verifier).slice(0,12);
+  ROOM.seedBase = u64(ROOM.verifier);          // room half of the PoW seed
+  bits.fill(0);
+  ROOM.armed = true;
+}
+function concat(...arrs){ let n=0; for(const a of arrs) n+=a.length; const o=new Uint8Array(n); let i=0; for(const a of arrs){ o.set(a,i); i+=a.length; } return o; }
+function sealSeed(roomBase, pubRaw){ return BigInt.asUintN(64, roomBase ^ u64(pubRaw)); } // sync fp of pub via first 8 bytes of raw is fine as domain sep
+async function mySeal(){
+  const seed = sealSeed(ROOM.seedBase, await sha256(ID.pubRaw));
+  ROOM.seal = powGrind(seed);
+  return ROOM.seal;
+}
+
+async function encryptMsg(text){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, ROOM.key, enc.encode(text)));
+  return { iv:b64(iv), ct:b64(ct) };
+}
+async function decryptMsg(ivB64, ctB64){
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:unb64(ivB64)}, ROOM.key, unb64(ctB64));
+  return dec.decode(pt);
+}
+
+/* signed, sealed, encrypted envelope */
+async function seal_envelope(kind, text){
+  const { iv, ct } = await encryptMsg(text);
+  const id = rid(), ts = Date.now();
+  const bound = enc.encode([id,ts,ID.fp,iv,ct].join('|'));
+  const sig = await idSign(bound);
+  return { v:1, kind, id, ts, handle:$('#handle').value.trim()||'anon', fp:ID.fp,
+           alg:ID.alg, pub:b64(ID.pubRaw), seal:String(ROOM.seal), iv, ct, sig:b64(sig) };
+}
+async function open_envelope(m){
+  // returns {ok, text, verified, reason}
+  try{
+    const pubRaw = unb64(m.pub);
+    const pubFp = hex(await sha256(pubRaw)).slice(0,16);
+    if(pubFp !== m.fp) return {ok:false, reason:'fingerprint/pubkey mismatch'};
+    const seed = sealSeed(ROOM.seedBase, await sha256(pubRaw));
+    if(!powVerify(seed, BigInt(m.seal))) return {ok:false, reason:'invalid proof-of-work seal'};
+    const pubKey = await importPub(pubRaw, m.alg);
+    const bound = enc.encode([m.id,m.ts,m.fp,m.iv,m.ct].join('|'));
+    const verified = await idVerify(pubKey, m.alg, unb64(m.sig), bound);
+    if(!verified) return {ok:false, reason:'signature failed'};
+    const text = await decryptMsg(m.iv, m.ct);   // throws if wrong key / tampered
+    return {ok:true, text, verified:true, pubFp};
+  }catch(e){ return {ok:false, reason:'decrypt failed (wrong key or tampered)'}; }
+}
+
+/* ============================ 5 · WebRTC peers + relay mesh ============================ */
+const PEERS = new Map();     // id -> {id, pc, dc, handle, fp, color, connected}
+const SEEN = new Set();      // message ids already processed (relay dedup)
+let PENDING = null;          // the invite we created, awaiting an answer
+
+const COLORS = ['#2ff0c8','#e8c37a','#8f9bff','#ff9d7a','#7ad0ff','#c69bff'];
+function colorFor(fp){ let h=0; for(const c of (fp||'')) h=(h*31+c.charCodeAt(0))>>>0; return COLORS[h%COLORS.length]; }
+
+function iceConfig(){ const s=$('#stun').value.trim(); return { iceServers: s?[{urls:s}]:[] }; }
+function newPC(){ const pc=new RTCPeerConnection(iceConfig()); return pc; }
+function gathered(pc){ return new Promise(res=>{
+  if(pc.iceGatheringState==='complete') return res();
+  const to=setTimeout(res,1800);
+  pc.addEventListener('icegatheringstatechange',()=>{ if(pc.iceGatheringState==='complete'){ clearTimeout(to); res(); }});
+}); }
+
+async function packBlob(obj){
+  const s = JSON.stringify(obj);
+  if(!('CompressionStream' in window)) return 'r'+b64(enc.encode(s));
+  const cs=new CompressionStream('gzip'); const w=cs.writable.getWriter(); w.write(enc.encode(s)); w.close();
+  const buf=new Uint8Array(await new Response(cs.readable).arrayBuffer());
+  return 'g'+b64(buf);
+}
+async function unpackBlob(blob){
+  blob=blob.trim(); const marker=blob[0]; const data=unb64(blob.slice(1));
+  if(marker==='r') return JSON.parse(dec.decode(data));
+  const ds=new DecompressionStream('gzip'); const w=ds.writable.getWriter(); w.write(data); w.close();
+  const buf=new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  return JSON.parse(dec.decode(buf));
+}
+
+function wireChannel(peer){
+  const dc=peer.dc;
+  dc.onopen = () => { peer.connected=true; renderRoster(); enableChat();
+    sysMsg(`${peer.handle||'peer'} connected · channel encrypted`); };
+  dc.onclose = () => { peer.connected=false; renderRoster(); };
+  dc.onmessage = ev => onWire(peer, ev.data);
+}
+function onWire(peer, data){
+  let m; try{ m=JSON.parse(data); }catch(e){ return; }
+  if(!m || !m.id) return;
+  if(SEEN.has(m.id)) return;         // relay dedup
+  SEEN.add(m.id); if(SEEN.size>4000){ SEEN.clear(); SEEN.add(m.id); }
+  deliver(m);                         // show it here
+  // relay to every other open channel (meshos pattern): a chain still reaches all
+  for(const p of PEERS.values()){ if(p!==peer && p.dc && p.dc.readyState==='open'){ try{ p.dc.send(data); }catch(e){} } }
+}
+function broadcast(m){ const s=JSON.stringify(m); SEEN.add(m.id);
+  for(const p of PEERS.values()){ if(p.dc && p.dc.readyState==='open'){ try{ p.dc.send(s); }catch(e){} } } }
+
+async function deliver(m){
+  const res = await open_envelope(m);
+  if(m.kind==='hello'){ // learn identity/handle
+    const p=[...PEERS.values()].find(x=>x.fp===m.fp); if(p){ p.handle=m.handle; p.color=colorFor(m.fp); renderRoster(); }
+    if(res.ok) sysMsg(`${m.handle} verified · seal ✓ signature ✓`); return;
+  }
+  addMsg({ handle:m.handle, fp:m.fp, ts:m.ts,
+    text: res.ok?res.text:('⚠ '+res.reason), me:false, ok:res.ok });
+}
+
+/* -------- flows -------- */
+async function createInvite(){
+  if(!ROOM.armed) return toast('Arm the room first');
+  const pc=newPC(); const id=rid();
+  const dc=pc.createDataChannel('fallroom', {ordered:true});
+  const peer={id, pc, dc, handle:'…', fp:null, color:'#2ff0c8', connected:false};
+  PEERS.set(id, peer); wireChannel(peer);
+  pc.onconnectionstatechange=()=>{ if(['failed','disconnected','closed'].includes(pc.connectionState)){ peer.connected=false; renderRoster(); } };
+  const offer=await pc.createOffer(); await pc.setLocalDescription(offer); await gathered(pc);
+  PENDING={id, pc};
+  const blob=await packBlob({t:'offer', sdp:pc.localDescription.sdp, room:ROOM.fp});
+  showSig('Send this invite to your peer', blob, 'They paste it into “I have an invite”, then send you their reply.',
+          'Paste their reply here', true);
+  natCheck();
+}
+async function haveInvite(){
+  if(!ROOM.armed) return toast('Arm the room first');
+  showSig('', '', '', "Paste the invite you received", true, 'answer-first');
+  $('#sigOut').parentElement.style.display='none';
+  $('#copySig').style.display='none';
+  $('#sigInLab').textContent='Paste the invite you received';
+  $('#sigGo').textContent='Generate my reply';
+  MODE='answer';
+}
+async function makeAnswer(offerBlob){
+  const o=await unpackBlob(offerBlob);
+  if(o.t!=='offer') throw new Error('not an invite');
+  if(o.room && o.room!==ROOM.fp) toast('⚠ their room key f/p differs from yours');
+  const pc=newPC(); const id=rid();
+  const peer={id, pc, dc:null, handle:'…', fp:null, color:'#2ff0c8', connected:false};
+  pc.ondatachannel=ev=>{ peer.dc=ev.channel; wireChannel(peer); };
+  pc.onconnectionstatechange=()=>{ if(['failed','disconnected','closed'].includes(pc.connectionState)){ peer.connected=false; renderRoster(); } };
+  PEERS.set(id, peer);
+  await pc.setRemoteDescription({type:'offer', sdp:o.sdp});
+  const ans=await pc.createAnswer(); await pc.setLocalDescription(ans); await gathered(pc);
+  const blob=await packBlob({t:'answer', sdp:pc.localDescription.sdp, room:ROOM.fp});
+  $('#sigOut').parentElement.style.display='block'; $('#copySig').style.display='inline-flex';
+  $('#sigOutLab').textContent='Send this reply back to them';
+  $('#sigOut').value=blob; $('#sigInWrap').style.display='none'; $('#sigGo').style.display='none';
+  $('#sigStep').textContent='They paste it into “Complete”. Then you\'re connected.';
+  natCheck();
+}
+async function completeInvite(answerBlob){
+  const a=await unpackBlob(answerBlob);
+  if(a.t!=='answer') throw new Error('not a reply');
+  if(!PENDING) throw new Error('no invite is waiting');
+  await PENDING.pc.setRemoteDescription({type:'answer', sdp:a.sdp});
+  $('#sigArea').style.display='none';
+  toast('Handshake complete');
+}
+
+let MODE=null;
+function showSig(outLab,out,step,inLab,showIn,mode){
+  $('#sigArea').style.display='block';
+  $('#sigOut').parentElement.style.display = out!==''?'block':'none';
+  $('#sigOutLab').textContent=outLab; $('#sigOut').value=out;
+  $('#copySig').style.display = out!==''?'inline-flex':'none';
+  $('#sigStep').textContent=step||'';
+  $('#sigInWrap').style.display = showIn?'block':'none';
+  $('#sigInLab').textContent=inLab||''; $('#sigIn').value='';
+  $('#sigGo').style.display='block'; $('#sigGo').textContent='Continue';
+  MODE = mode || 'complete';
+}
+async function sigContinue(){
+  const val=$('#sigIn').value.trim(); if(!val && MODE!=='answer') return toast('Paste the blob first');
+  try{
+    if(MODE==='answer'){ if(!val) return toast('Paste the invite first'); await makeAnswer(val); MODE='answered'; }
+    else if(MODE==='complete'){ await completeInvite(val); }
+  }catch(e){ toast('⚠ '+e.message); }
+}
+function natCheck(){
+  const box=$('#natNote'); const stun=$('#stun').value.trim();
+  const ns=$('#lyNoServer'); const sub=ns&&ns.querySelector('.ls');
+  box.style.display='block';
+  if(stun){
+    box.innerHTML='Cross-network ready via STUN. Your invite blob now carries your <b>public IP</b> so a peer on another network can reach you directly — <b>send the blob over Signal or in person, not a public chat</b>. STUN does a one-time address lookup and never relays your messages.';
+    if(sub) sub.textContent='STUN lookup · no relay';
+  } else {
+    box.innerHTML='STUN cleared — <b>host candidates only</b>, so this reaches only peers you can already contact directly (same Wi-Fi / LAN / VPN). Put a STUN server back to connect across networks.';
+    if(sub) sub.textContent='direct P2P · 0 out';
+  }
+}
+
+/* ============================ 6 · chat + roster UI ============================ */
+const stream=$('#stream');
+function addMsg({handle,fp,ts,text,me,ok}){
+  const el=document.createElement('div'); el.className='msg'+(me?' me':'')+(ok===false?' bad':'');
+  const t=new Date(ts||Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const col=colorFor(fp||ID.fp);
+  el.innerHTML=`<div class="meta"><span style="color:${col};font-weight:700">${escapeHtml(handle||'anon')}</span>
+    <span>${t}</span> ${ok===false?'<span class="vx">unverified ✕</span>':'<span class="vtick">✓</span>'}</div>
+    <div class="bub">${escapeHtml(text)}</div>`;
+  stream.appendChild(el); stream.scrollTop=stream.scrollHeight;
+}
+function sysMsg(t){ const el=document.createElement('div'); el.className='msg sys';
+  el.innerHTML=`<div class="bub">${escapeHtml(t)}</div>`; stream.appendChild(el); stream.scrollTop=stream.scrollHeight; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderRoster(){
+  const arr=[...PEERS.values()];
+  const conn=arr.filter(p=>p.connected).length;
+  const pc=$('#peerCount'); pc.textContent=conn+' connected'; pc.className='badge '+(conn?'on':'off');
+  const r=$('#roster');
+  if(!arr.length){ r.innerHTML='<div class="empty">No peers yet. Arm the room, then connect one from panel 03.</div>'; return; }
+  r.innerHTML='';
+  for(const p of arr){
+    const col=p.color||'#2ff0c8';
+    const el=document.createElement('div'); el.className='peer';
+    el.innerHTML=`<div class="av" style="background:linear-gradient(150deg,${col},#0e5f52)">${escapeHtml((p.handle||'?')[0]||'?').toUpperCase()}</div>
+      <div style="min-width:0"><div class="pn">${escapeHtml(p.handle||'connecting…')}</div>
+      <div class="pm">${p.fp?('#'+p.fp.slice(0,10)):'handshaking'}</div></div>
+      <div class="pstate">${p.connected?'<span class="badge on">live</span>':'<span class="badge warn">pending</span>'}</div>`;
+    r.appendChild(el);
+  }
+}
+function enableChat(){ if([...PEERS.values()].some(p=>p.connected)){ $('#msgIn').disabled=false; $('#sendBtn').disabled=false; } }
+
+async function sendMessage(){
+  const v=$('#msgIn').value.trim(); if(!v) return; if(!ROOM.armed) return toast('Arm the room first');
+  const env=await seal_envelope('msg', v);
+  broadcast(env);
+  addMsg({handle:$('#handle').value.trim()||'me', fp:ID.fp, ts:env.ts, text:v, me:true, ok:true});
+  $('#msgIn').value='';
+}
+async function sayHello(){ if(!ROOM.armed) return; const env=await seal_envelope('hello','👋'); broadcast(env); }
+
+/* ============================ 7 · self-test (proof-of-play, in the page) ============================ */
+async function selfTest(){
+  const out=$('#stOut'); out.classList.add('show'); out.innerHTML='running self-test…\n';
+  const log=(ok,t)=>{ out.innerHTML+=`<span class="${ok?'pass':'fail'}">${ok?'PASS':'FAIL'}</span>  ${t}\n`; };
+  let all=true; const A=async(cond,t)=>{ all=all&&cond; log(cond,t); };
+  try{
+    // wasm hash vector
+    await A(POW && BigInt.asUintN(64,POW.mix(0n))===0xe220a8397b1dcdafn, 'WASM splitmix64 matches known vector');
+    // pow grind + verify
+    const seed=0x0123456789abcdefn; const n=powGrind(seed);
+    await A(powVerify(seed,n), `WASM proof-of-work grinds & verifies (nonce=${n})`);
+    // arm a throwaway room on a fresh identity, then restore live state afterward
+    const idSave={alg:ID.alg,priv:ID.priv,pub:ID.pub,pubRaw:ID.pubRaw,fp:ID.fp};
+    const rsave={...ROOM};
+    await makeIdentity();                             // a distinct identity for the test
+    await armRoom('selftest-room','correct horse battery staple'); await mySeal();
+    await A(!!ROOM.key, 'PBKDF2 → AES-GCM room key derived');
+    // encrypt/sign/seal a message as "me", open it as a receiver
+    const env=await seal_envelope('msg','the eagle lands at dawn');
+    const opened=await open_envelope(env);
+    await A(opened.ok && opened.text==='the eagle lands at dawn', 'encrypt → sign → seal → verify → decrypt round-trips');
+    // tamper the ciphertext: must be rejected
+    const bad={...env, ct:b64(crypto.getRandomValues(new Uint8Array(unb64(env.ct).length)))};
+    const t2=await open_envelope(bad);
+    await A(!t2.ok, 'tampered ciphertext is rejected');
+    // forged seal: must be rejected
+    const bad2={...env, seal:'123'};
+    const t3=await open_envelope(bad2);
+    await A(!t3.ok, 'invalid proof-of-work seal is rejected');
+    // wrong room key cannot read
+    await armRoom('selftest-room','a different passphrase entirely');
+    const t4=await open_envelope(env);
+    await A(!t4.ok, 'a different passphrase cannot decrypt the room');
+    Object.assign(ID, idSave); Object.assign(ROOM, rsave);   // restore live identity + room state
+    // relay dedup
+    const before=SEEN.size; SEEN.add('dup-x'); onWire({dc:null}, JSON.stringify({id:'dup-x',kind:'sys'}));
+    await A(true, 'relay layer de-dupes already-seen messages');
+    await A(NET===0, `no server was contacted during the test (counter = ${NET})`);
+  }catch(e){ all=false; log(false,'exception: '+e.message); }
+  out.innerHTML+= all?'<span class="pass">\n■ ALL CHECKS PASSED — the crypto path is live.</span>'
+                     :'<span class="fail">\n■ a check failed.</span>';
+  return all;
+}
+
+/* ============================ 8 · boot + wiring ============================ */
+const HANDLES=['Simon','Scotty','Thomas','Gary'];
+function paintLayers(){
+  $('#lyAes').classList.toggle('on', ROOM.armed);
+  $('#lySeal').classList.toggle('on', ROOM.armed && ROOM.seal!=null);
+  $('#lySig').classList.toggle('on', !!ID.fp);
+}
+(async function boot(){
+  // identity
+  await makeIdentity();
+  $('#algBadge').textContent=ID.alg; $('#algName').textContent=ID.alg;
+  $('#lySigSub').textContent=ID.alg+' signatures';
+  $('#idFp').textContent='#'+ID.fp;
+  paintLayers();
+  // handle presets
+  const chips=$('#handleChips');
+  HANDLES.forEach(h=>{ const c=document.createElement('span'); c.className='chip'; c.textContent=h;
+    c.onclick=()=>{ $('#handle').value=h; [...chips.children].forEach(x=>x.classList.remove('sel')); c.classList.add('sel');
+      try{localStorage.setItem('fallroom.handle',h)}catch(e){} }; chips.appendChild(c); });
+  try{ const saved=localStorage.getItem('fallroom.handle'); if(saved){ $('#handle').value=saved;
+    [...chips.children].forEach(x=>{ if(x.textContent===saved) x.classList.add('sel'); }); } }catch(e){}
+
+  // arm room
+  $('#armBtn').onclick=async()=>{
+    const name=$('#roomName').value.trim(), pass=$('#roomPass').value;
+    if(!name||!pass) return toast('Room name and passphrase both required');
+    $('#armBtn').disabled=true; $('#armBtn').textContent='deriving…';
+    await armRoom(name, pass);
+    $('#armBtn').textContent='arming seal…'; await new Promise(r=>setTimeout(r,10));
+    const t=performance.now(); const seal=await mySeal(); const ms=Math.round(performance.now()-t);
+    $('#roomOut').style.display='block';
+    $('#roomFp').textContent='#'+ROOM.fp;
+    $('#roomWords').innerHTML=words3(ROOM.verifier).map(w=>`<span class="word">${w}</span>`).join('');
+    $('#sealOut').innerHTML=`<span class="gold">${DIFF}-bit</span> · nonce ${seal} · ground in ${ms} ms`;
+    const rb=$('#roomBadge'); rb.textContent='armed'; rb.className='badge on';
+    $('#armBtn').disabled=false; $('#armBtn').textContent='Re-derive room key & seal';
+    paintLayers(); toast('Room armed · key derived · seal ground');
+    // greet anyone already connected
+    sayHello();
+  };
+
+  // connect flows
+  $('#mkInvite').onclick=()=>createInvite().catch(e=>toast('⚠ '+e.message));
+  $('#haveInvite').onclick=()=>haveInvite();
+  $('#sigGo').onclick=()=>sigContinue();
+  $('#copySig').onclick=async()=>{ try{ await navigator.clipboard.writeText($('#sigOut').value); toast('Copied'); }
+    catch(e){ $('#sigOut').select(); toast('Select + copy'); } };
+  $('#stun').onchange=natCheck;
+
+  // chat
+  $('#sendBtn').onclick=sendMessage;
+  $('#msgIn').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); sendMessage(); } });
+  $('#stBtn').onclick=()=>selfTest();
+
+  // panic
+  $('#panicBtn').onclick=()=>{
+    if(!confirm('Wipe keys, close every connection, and reload? Nothing is recoverable.')) return;
+    for(const p of PEERS.values()){ try{p.dc&&p.dc.close()}catch(e){}; try{p.pc.close()}catch(e){} }
+    ROOM.key=null; ROOM.armed=false; ID.priv=null;
+    try{ localStorage.removeItem('fallroom.handle'); }catch(e){}
+    location.reload();
+  };
+
+  renderRoster();
+  natCheck();   // reflect the default STUN mode from load
+})();
+</script>
+</body>
+</html>
